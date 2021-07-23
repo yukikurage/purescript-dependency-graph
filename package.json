@@ -11,19 +11,14 @@
     "Other"
   ],
   "activationEvents": [
-    "onCommand:purescript-dependency-graph.helloWorld",
     "onCommand:purescript-dependency-graph.drawGraph"
   ],
   "main": "./out/extension.js",
   "contributes": {
     "commands": [
       {
-        "command": "purescript-dependency-graph.helloWorld",
-        "title": "Hello World"
-      },
-      {
         "command": "purescript-dependency-graph.drawGraph",
-        "title": "Draw Graph"
+        "title": "Purescript Dependency Graph: Draw Graph"
       }
     ],
     "configuration": {
