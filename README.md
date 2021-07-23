@@ -26,3 +26,4 @@ ctrl + shift + P でコマンドパレットを出し，
 |  `sourcesDirectory`  | `"src"` |  ソースファイル(`.purs`)が位置するディレクトリを選びます．大きすぎると処理が重くなるので注意．  |
 |  `outputFile`  | `"purescript-dependency-graph/output.md"` | 実行結果を出力する位置です．  |
 | `selectedModules`| `".*"` | 正規表現で選ぶモジュールを絞り込めます． |
+|`extension`|`"purs"`|Haskell(動作確認済み)やElm(動作未確認)のプロジェクトで使うときに変えてください．|
