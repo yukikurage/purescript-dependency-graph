@@ -124,6 +124,10 @@ export function activate(context: vscode.ExtensionContext) {
 		}
 
 		const sourcesDirectory = vscode.Uri.joinPath(rootUri, config.get('sourcesDirectory', ''));
+		if (vscode.FileSystemError.FileNotADirectory(sourcesDirectory).code === 'FileNotADirectory'){
+			vscode.window.showInformationMessage('This project isn\'t valid');
+			return;
+		}
 
 		const selectingRegExp: RegExp = config.get('selectedModules', /.*/);
 		const outputFile: vscode.Uri = vscode.Uri.joinPath(rootUri, config.get('outputFile', 'purescript-dependency-graph/output.md'));
