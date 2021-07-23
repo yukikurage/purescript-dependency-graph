@@ -1,26 +1,144 @@
-// The module 'vscode' contains the VS Code extensibility API
-// Import the module and reference it with the alias vscode in your code below
+import { TextDecoder, TextEncoder } from 'util';
 import * as vscode from 'vscode';
 
-// this method is called when your extension is activated
-// your extension is activated the very first time the command is executed
-export function activate(context: vscode.ExtensionContext) {
-	
-	// Use the console to output diagnostic information (console.log) and errors (console.error)
-	// This line of code will only be executed once when your extension is activated
-	console.log('Congratulations, your extension "purescript-dependency-graph" is now active!');
-
-	// The command has been defined in the package.json file
-	// Now provide the implementation of the command with registerCommand
-	// The commandId parameter must match the command field in package.json
-	let disposable = vscode.commands.registerCommand('purescript-dependency-graph.helloWorld', () => {
-		// The code you place here will be executed every time your command is executed
-		// Display a message box to the user
-		vscode.window.showInformationMessage('Hello World from purescript-dependency-graph!');
-	});
-
-	context.subscriptions.push(disposable);
+class ModuleTree {
+	label: string;
+	dependencies: string[] = [];
+	children: ModuleTree[] = [];
+	constructor(label: string) { this.label = label; }
+	addDependencies(path: string[], dep: string) {
+		if (path.length === 0) {
+			this.dependencies.push(dep);
+			console.log('added');
+		} else {
+			this.children.find(module => module.label === path[0])?.addDependencies(path.slice(1), dep);
+		}
+	}
+	addModule(path: string[]) {
+		if (path.length !== 0) {
+			let newModule: ModuleTree;
+			const found = this.children.find(module => module.label === path[0]);
+			if (found === undefined) {
+				newModule = new ModuleTree(path[0]);
+				this.children.push(newModule);
+			} else {
+				newModule = found;
+			}
+			newModule.addModule(path.slice(1));
+		}
+	}
 }
 
-// this method is called when your extension is deactivated
-export function deactivate() {}
+const makeGraph = (moduleTree: ModuleTree) => {
+	let subgraphs = '';
+	let dependencies = '';
+	const loopFunc = (loopTree: ModuleTree, currentDir: string) => { //currentDir = 'Path.To.Module.' etc
+		if (loopTree.children.length !== 0) {
+			subgraphs += 'subgraph ' + currentDir + loopTree.label + '_subgraph [' + loopTree.label + ']\n';
+			subgraphs += currentDir + loopTree.label + '[/' + loopTree.label + '/]\n';
+			for (const mod of loopTree.children) {
+				loopFunc(mod, currentDir + loopTree.label + '.');
+			}
+			subgraphs += 'end\n';
+		} else {
+			subgraphs += currentDir + loopTree.label + '[' + loopTree.label + ']\n';
+		}
+		for (const depending of loopTree.dependencies) {
+			dependencies += currentDir + loopTree.label + ' --> ' + depending + '\n';
+		}
+	};
+	for (const mod of moduleTree.children) {
+		loopFunc(mod, '');
+	}
+	return '```mermaid\nflowchart LR\n' + subgraphs + dependencies + '```';
+};
+
+const inDirModules = async (currentUri: vscode.Uri) => {
+	const ls = await vscode.workspace.fs.readDirectory(currentUri);
+	const purFiles = ls.filter(module => module[0].match(/\.purs$/) && module[1] === 1);
+	const folders = ls.filter(module => module[1] === 2);
+
+	let result: string[] = [];
+
+	for (let module of purFiles) {
+		const sourceUInt = await vscode.workspace.fs.readFile(vscode.Uri.joinPath(currentUri, module[0]));
+		const source = new TextDecoder().decode(sourceUInt).replace(/{-.*?-}/, '').replace(/--.*?$/, '');
+
+		const moduleName = source.match(/module .*?($|(?=(\n|\r|\r\n)))/g)?.[0].split(' ')[1];
+		if (moduleName === undefined) {continue;}
+		result.push(moduleName);
+	}
+
+	for (let folder of folders) {
+		result = result.concat(await inDirModules(vscode.Uri.joinPath(currentUri, folder[0])));
+	}
+	return result;
+};
+
+const makeModuleTree = async (currentUri: vscode.Uri, moduleTree: ModuleTree, selectingRegExp: RegExp, allModules: string[]) => {
+	const ls = await vscode.workspace.fs.readDirectory(currentUri);
+	const purFiles = ls.filter(module => module[0].match(/\.purs$/) && module[1] === 1);
+	const folders = ls.filter(module => module[1] === 2);
+
+	for (let module of purFiles) {
+		const sourceUInt = await vscode.workspace.fs.readFile(vscode.Uri.joinPath(currentUri, module[0]));
+		const source = new TextDecoder().decode(sourceUInt).replace(/{-.*?-}/, '').replace(/--.*?$/, '');
+
+		const moduleName = source.match(/module .*?($|(?=(\n|\r|\r\n)))/g)?.[0].split(' ')[1];
+
+		if (moduleName === undefined || !moduleName?.match(selectingRegExp)){continue;}
+
+		moduleTree.addModule(moduleName.split('.'));
+
+		const res = source.match(/import .*?($|(?=(\n|\r|\r\n)))/g)?.map(x => x.split(' ')[1]);
+
+		if (res !== null) {
+			const nubRes = Array.from(new Set(res));
+			for (let depending of nubRes) {
+				if (depending.match(selectingRegExp) && allModules.includes(depending)) {
+					moduleTree.addDependencies(moduleName.split('.'), depending);
+				}
+			}
+		}
+	}
+
+	for (let folder of folders) {
+		await makeModuleTree(vscode.Uri.joinPath(currentUri, folder[0]), moduleTree, selectingRegExp, allModules);
+	}
+};
+
+export function activate(context: vscode.ExtensionContext) {
+	console.log('"purescript-dependency-graph" is now active');
+
+	const drawGraph = vscode.commands.registerCommand('purescript-dependency-graph.drawGraph', async () => {
+		const config = vscode.workspace.getConfiguration('purescript-dependency-graph');
+
+		const workspaceFolders = vscode.workspace.workspaceFolders;
+		let rootUri: vscode.Uri;
+		if (workspaceFolders === undefined) {
+			rootUri = vscode.Uri.parse("");
+			vscode.window.showInformationMessage('This project isn\'t valid');
+			return;
+		} else {
+			rootUri = workspaceFolders[0].uri;
+		}
+
+		const sourcesDirectory = vscode.Uri.joinPath(rootUri, config.get('sourcesDirectory', ''));
+
+		const selectingRegExp: RegExp = config.get('selectedModules', /.*/);
+		const outputFile: vscode.Uri = vscode.Uri.joinPath(rootUri, config.get('outputFile', 'purescript-dependency-graph/output.md'));
+
+		const moduleTree: ModuleTree = new ModuleTree("ModulesRoot");
+
+		const allModules = await inDirModules(sourcesDirectory);
+		
+		await  makeModuleTree(sourcesDirectory, moduleTree, selectingRegExp, allModules);
+
+		console.log(moduleTree);
+		
+		vscode.workspace.fs.writeFile(outputFile, new TextEncoder().encode(makeGraph(moduleTree)));
+	});
+	context.subscriptions.push(drawGraph);
+}
+
+export function deactivate() { }
