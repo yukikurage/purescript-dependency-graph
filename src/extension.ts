@@ -53,44 +53,44 @@ const makeGraph = (moduleTree: ModuleTree) => {
 	return '```mermaid\nflowchart LR\n' + subgraphs + dependencies + '```';
 };
 
-const inDirModules = async (currentUri: vscode.Uri) => {
+const inDirModules = async (currentUri: vscode.Uri, extension: string) => {
 	const ls = await vscode.workspace.fs.readDirectory(currentUri);
-	const purFiles = ls.filter(module => module[0].match(/\.purs$/) && module[1] === 1);
+	const purFiles = ls.filter(module => module[0].match(new RegExp ('\\.'+extension + '$')) && module[1] === 1);
 	const folders = ls.filter(module => module[1] === 2);
 
 	let result: string[] = [];
 
 	for (let module of purFiles) {
 		const sourceUInt = await vscode.workspace.fs.readFile(vscode.Uri.joinPath(currentUri, module[0]));
-		const source = new TextDecoder().decode(sourceUInt).replace(/{-.*?-}/g, '').replace(/--.*?($|(?=(\n|\r|\r\n)))/g, '');
+		const source = new TextDecoder().decode(sourceUInt).replace(/{-.*?-}/g, '').replace(/--.*?(\(|$|(?=(\n|\r|\r\n)))/g, '');
 
-		const moduleName = source.match(/module .*?($|(?=(\n|\r|\r\n)))/g)?.[0].split(/ /g)[1];
+		const moduleName = source.match(/module .*?(\(|$|(?=(\n|\r|\r\n)))/g)?.[0].split(/\s+/)[1];
 		if (moduleName === undefined) { continue; }
 		result.push(moduleName);
 	}
 
 	for (let folder of folders) {
-		result = result.concat(await inDirModules(vscode.Uri.joinPath(currentUri, folder[0])));
+		result = result.concat(await inDirModules(vscode.Uri.joinPath(currentUri, folder[0]), extension));
 	}
 	return result;
 };
 
-const makeModuleTree = async (currentUri: vscode.Uri, moduleTree: ModuleTree, selectingRegExp: RegExp, allModules: string[]) => {
+const makeModuleTree = async (currentUri: vscode.Uri, moduleTree: ModuleTree, selectingRegExp: RegExp, allModules: string[], extension: string) => {
 	const ls = await vscode.workspace.fs.readDirectory(currentUri);
-	const purFiles = ls.filter(module => module[0].match(/\.purs$/) && module[1] === 1);
+	const purFiles = ls.filter(module => module[0].match(new RegExp ('\\.'+extension + '$')) && module[1] === 1);
 	const folders = ls.filter(module => module[1] === 2);
 
 	for (let module of purFiles) {
 		const sourceUInt = await vscode.workspace.fs.readFile(vscode.Uri.joinPath(currentUri, module[0]));
-		const source = new TextDecoder().decode(sourceUInt).replace(/{-.*?-}/g, '').replace(/--.*?($|(?=(\n|\r|\r\n)))/g, '');
+		const source = new TextDecoder().decode(sourceUInt).replace(/{-.*?-}/g, '').replace(/--.*?(\(|$|(?=(\n|\r|\r\n)))/g, '').replace(/qualified/g,'');
 
-		const moduleName = source.match(/module .*?($|(?=(\n|\r|\r\n)))/g)?.[0].split(/[ |\(]/g)[1];
+		const moduleName = source.match(/module .*?(\(|$|(?=(\n|\r|\r\n)))/g)?.[0].split(/\s+/)[1];
 
 		if (moduleName === undefined || !moduleName?.match(selectingRegExp)) { continue; }
 
 		moduleTree.addModule(moduleName.split('.'));
 
-		const res = source.match(/import .*?($|(?=(\n|\r|\r\n)))/g)?.map(x => x.split(/[ |\(]/g)[1]);
+		const res = source.match(/import .*?(\(|$|(?=(\n|\r|\r\n)))/g)?.map(x => x.split(/\s+/)[1]);
 
 		if (res !== null) {
 			const nubRes = Array.from(new Set(res));
@@ -103,7 +103,7 @@ const makeModuleTree = async (currentUri: vscode.Uri, moduleTree: ModuleTree, se
 	}
 
 	for (let folder of folders) {
-		await makeModuleTree(vscode.Uri.joinPath(currentUri, folder[0]), moduleTree, selectingRegExp, allModules);
+		await makeModuleTree(vscode.Uri.joinPath(currentUri, folder[0]), moduleTree, selectingRegExp, allModules, extension);
 	}
 };
 
@@ -133,6 +133,7 @@ export function activate(context: vscode.ExtensionContext) {
 
 		const selectingRegExp: RegExp = config.get('selectedModules', /.*/);
 		const outputFile: vscode.Uri = vscode.Uri.joinPath(rootUri, config.get('outputFile', 'purescript-dependency-graph/output.md'));
+		const extension: string = config.get('extension', 'purs');
 
 		const moduleTree: ModuleTree = new ModuleTree("ModulesRoot");
 
@@ -143,9 +144,9 @@ export function activate(context: vscode.ExtensionContext) {
 				message: `Drawing Graph ...`,
 			});
 
-			const allModules = await inDirModules(sourcesDirectory);
+			const allModules = await inDirModules(sourcesDirectory, extension);
 
-			await makeModuleTree(sourcesDirectory, moduleTree, selectingRegExp, allModules);
+			await makeModuleTree(sourcesDirectory, moduleTree, selectingRegExp, allModules, extension);
 
 			console.log(moduleTree);
 

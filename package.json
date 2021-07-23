@@ -41,7 +41,7 @@
         },
         "purescript-dependency-graph.extension": {
           "type": "string",
-          "default": ".purs",
+          "default": "purs",
           "description": "Set filename extension"
         }
       }
