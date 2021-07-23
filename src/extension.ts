@@ -62,9 +62,9 @@ const inDirModules = async (currentUri: vscode.Uri, extension: string) => {
 
 	for (let module of purFiles) {
 		const sourceUInt = await vscode.workspace.fs.readFile(vscode.Uri.joinPath(currentUri, module[0]));
-		const source = new TextDecoder().decode(sourceUInt).replace(/{-.*?-}/g, '').replace(/--.*?(\(|$|(?=(\n|\r|\r\n)))/g, '');
+		const source = new TextDecoder().decode(sourceUInt).replace(/{-.*?-}/g, '').replace(/--.*?($|(?=(\(|\n|\r|\r\n)))/g, '');
 
-		const moduleName = source.match(/module .*?(\(|$|(?=(\n|\r|\r\n)))/g)?.[0].split(/\s+/)[1];
+		const moduleName = source.match(/module .*?($|(?=(\(|\n|\r|\r\n)))/g)?.[0].split(/\s+/)[1];
 		if (moduleName === undefined) { continue; }
 		result.push(moduleName);
 	}
@@ -82,15 +82,15 @@ const makeModuleTree = async (currentUri: vscode.Uri, moduleTree: ModuleTree, se
 
 	for (let module of purFiles) {
 		const sourceUInt = await vscode.workspace.fs.readFile(vscode.Uri.joinPath(currentUri, module[0]));
-		const source = new TextDecoder().decode(sourceUInt).replace(/{-.*?-}/g, '').replace(/--.*?(\(|$|(?=(\n|\r|\r\n)))/g, '').replace(/qualified/g,'');
+		const source = new TextDecoder().decode(sourceUInt).replace(/{-.*?-}/g, '').replace(/--.*?($|(?=(\(|\n|\r|\r\n)))/g, '').replace(/qualified/g,'');
 
-		const moduleName = source.match(/module .*?(\(|$|(?=(\n|\r|\r\n)))/g)?.[0].split(/\s+/)[1];
+		const moduleName = source.match(/module .*?($|(?=(\(|\n|\r|\r\n)))/g)?.[0].split(/\s+/)[1];
 
 		if (moduleName === undefined || !moduleName?.match(selectingRegExp)) { continue; }
 
 		moduleTree.addModule(moduleName.split('.'));
 
-		const res = source.match(/import .*?(\(|$|(?=(\n|\r|\r\n)))/g)?.map(x => x.split(/\s+/)[1]);
+		const res = source.match(/import .*?($|(?=(\(|\n|\r|\r\n)))/g)?.map(x => x.split(/\s+/)[1]);
 
 		if (res !== null) {
 			const nubRes = Array.from(new Set(res));
