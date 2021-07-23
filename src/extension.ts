@@ -117,15 +117,17 @@ export function activate(context: vscode.ExtensionContext) {
 		let rootUri: vscode.Uri;
 		if (workspaceFolders === undefined) {
 			rootUri = vscode.Uri.parse("");
-			vscode.window.showInformationMessage('This project isn\'t valid');
+			vscode.window.showInformationMessage('No Opened Workspace here...');
 			return;
 		} else {
 			rootUri = workspaceFolders[0].uri;
 		}
 
 		const sourcesDirectory = vscode.Uri.joinPath(rootUri, config.get('sourcesDirectory', ''));
-		if (vscode.FileSystemError.FileNotADirectory(sourcesDirectory).code === 'FileNotADirectory'){
-			vscode.window.showInformationMessage('This project isn\'t valid');
+		try {
+			await vscode.workspace.fs.stat(sourcesDirectory);
+		} catch {
+			vscode.window.showInformationMessage(`${sourcesDirectory.toString(true)} file does not exist`);
 			return;
 		}
 
