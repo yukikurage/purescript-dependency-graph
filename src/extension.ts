@@ -62,10 +62,10 @@ const inDirModules = async (currentUri: vscode.Uri) => {
 
 	for (let module of purFiles) {
 		const sourceUInt = await vscode.workspace.fs.readFile(vscode.Uri.joinPath(currentUri, module[0]));
-		const source = new TextDecoder().decode(sourceUInt).replace(/{-.*?-}/, '').replace(/--.*?$/, '');
+		const source = new TextDecoder().decode(sourceUInt).replace(/{-.*?-}/g, '').replace(/--.*?($|(?=(\n|\r|\r\n)))/g, '');
 
-		const moduleName = source.match(/module .*?($|(?=(\n|\r|\r\n)))/g)?.[0].split(' ')[1];
-		if (moduleName === undefined) {continue;}
+		const moduleName = source.match(/module .*?($|(?=(\n|\r|\r\n)))/g)?.[0].split(/ /g)[1];
+		if (moduleName === undefined) { continue; }
 		result.push(moduleName);
 	}
 
@@ -82,15 +82,15 @@ const makeModuleTree = async (currentUri: vscode.Uri, moduleTree: ModuleTree, se
 
 	for (let module of purFiles) {
 		const sourceUInt = await vscode.workspace.fs.readFile(vscode.Uri.joinPath(currentUri, module[0]));
-		const source = new TextDecoder().decode(sourceUInt).replace(/{-.*?-}/, '').replace(/--.*?$/, '');
+		const source = new TextDecoder().decode(sourceUInt).replace(/{-.*?-}/g, '').replace(/--.*?($|(?=(\n|\r|\r\n)))/g, '');
 
-		const moduleName = source.match(/module .*?($|(?=(\n|\r|\r\n)))/g)?.[0].split(' ')[1];
+		const moduleName = source.match(/module .*?($|(?=(\n|\r|\r\n)))/g)?.[0].split(/[ |\(]/g)[1];
 
-		if (moduleName === undefined || !moduleName?.match(selectingRegExp)){continue;}
+		if (moduleName === undefined || !moduleName?.match(selectingRegExp)) { continue; }
 
 		moduleTree.addModule(moduleName.split('.'));
 
-		const res = source.match(/import .*?($|(?=(\n|\r|\r\n)))/g)?.map(x => x.split(' ')[1]);
+		const res = source.match(/import .*?($|(?=(\n|\r|\r\n)))/g)?.map(x => x.split(/[ |\(]/g)[1]);
 
 		if (res !== null) {
 			const nubRes = Array.from(new Set(res));
@@ -130,13 +130,21 @@ export function activate(context: vscode.ExtensionContext) {
 
 		const moduleTree: ModuleTree = new ModuleTree("ModulesRoot");
 
-		const allModules = await inDirModules(sourcesDirectory);
-		
-		await  makeModuleTree(sourcesDirectory, moduleTree, selectingRegExp, allModules);
+		vscode.window.withProgress({
+			location: vscode.ProgressLocation.Notification,
+		}, async (progress) => {
+			progress.report({
+				message: `Drawing Graph ...`,
+			});
 
-		console.log(moduleTree);
-		
-		vscode.workspace.fs.writeFile(outputFile, new TextEncoder().encode(makeGraph(moduleTree)));
+			const allModules = await inDirModules(sourcesDirectory);
+
+			await makeModuleTree(sourcesDirectory, moduleTree, selectingRegExp, allModules);
+
+			console.log(moduleTree);
+
+			vscode.workspace.fs.writeFile(outputFile, new TextEncoder().encode(makeGraph(moduleTree)));
+		})
 	});
 	context.subscriptions.push(drawGraph);
 }
