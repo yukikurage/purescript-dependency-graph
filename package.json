@@ -38,6 +38,11 @@
           "type": "string",
           "default": ".*",
           "description": "Draw selected modules. it will matching with regular expression."
+        },
+        "purescript-dependency-graph.extension": {
+          "type": "string",
+          "default": ".purs",
+          "description": "Set filename extension"
         }
       }
     }
