@@ -1,6 +1,7 @@
 {
   "name": "purescript-dependency-graph",
   "displayName": "PureScript Dependency Graph",
+  "publisher": "yukikurage", 
   "description": "PureScriptにおけるモジュール間の依存関係を，mermaidを利用してグラフ描画します．",
   "version": "0.0.1",
   "engines": {
