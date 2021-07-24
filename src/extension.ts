@@ -9,7 +9,6 @@ class ModuleTree {
 	addDependencies(path: string[], dep: string) {
 		if (path.length === 0) {
 			this.dependencies.push(dep);
-			console.log('added');
 		} else {
 			this.children.find(module => module.label === path[0])?.addDependencies(path.slice(1), dep);
 		}
@@ -28,6 +27,93 @@ class ModuleTree {
 		}
 	}
 }
+
+const splitWithLine = (source: string) => {
+	return source.split(/\r\n|\n\r|\n|\r/);
+};
+
+const deleteUnnecessary = (source: string) => {
+	//コメント，ダブルクオーテーション，括弧とその中身を削除
+	return source.replace(/\".*?\"/gs, '').replace(/\{-.*?-\}/gs, '').replace(/--.*?($|(?=(\n|\r|\r\n)))/g, '').replace(/\(.*?\)/gs, '');
+};
+
+const splitWithAnySpace = (source: string) => {
+	return source.split(/\s+/);
+};
+
+// deleteUnnecessaryとsplitWithLineを行ってから投入
+const getModuleName = (splitedSource: string[]) => {
+	const definedLine = splitedSource.find(line => line.match(/^module .*?/g));
+	if (definedLine === undefined) {
+		return undefined;
+	}
+	return splitWithAnySpace(definedLine)[1];
+};
+
+const getDependencies = (splitedSource: string[]) => {
+	const definedLines = splitedSource.filter(line => line.match(/^import .*?/g));
+	return definedLines.map(line => splitWithAnySpace(line)[1]);
+};
+
+
+const getSourceFileUri = async (currentUri: vscode.Uri, extension: string) => {
+	const ls = await vscode.workspace.fs.readDirectory(currentUri);
+	const purFiles = ls.filter(module => module[0].match(new RegExp('\\.' + extension + '$')) && module[1] === 1);
+	const folders = ls.filter(module => module[1] === 2);
+
+	let result: vscode.Uri[] = [];
+	for (let module of purFiles) {
+		result.push(vscode.Uri.joinPath(currentUri, module[0]));
+	}
+	for (let folder of folders) {
+		result = result.concat(await getSourceFileUri(vscode.Uri.joinPath(currentUri, folder[0]), extension));
+	}
+	return result;
+};
+
+const getSelectedModules = async (sourceFileUri: vscode.Uri[], selectingRegExp: RegExp) => {
+	let result: {uri: vscode.Uri, moduleName: string}[] = [];
+
+	for (let uri of sourceFileUri) {
+		const sourceUInt = await vscode.workspace.fs.readFile(uri);
+
+		const splitedSource = splitWithLine(deleteUnnecessary(new TextDecoder().decode(sourceUInt)));
+
+		const moduleName = getModuleName(splitedSource);
+
+		if (moduleName === undefined) {
+			vscode.window.showInformationMessage(`Can not parse a module name. At line: ${uri.toString(true)}`);
+			continue;
+		}
+
+		if (!moduleName?.match(selectingRegExp)) { continue; }
+		result.push({uri: uri, moduleName: moduleName});
+	}
+	return result;
+};
+
+const makeModuleTree = async (currentUri: vscode.Uri, extension: string, selectingRegExp: RegExp) => {
+	const sourceFileUri = await getSourceFileUri(currentUri, extension);
+	const selectedModules = await getSelectedModules(sourceFileUri, selectingRegExp);
+
+	const moduleTree = new ModuleTree('Root');
+
+	for (let selectedModule of selectedModules) {
+		const sourceUInt = await vscode.workspace.fs.readFile(selectedModule.uri);
+		const splitedSource = splitWithLine(deleteUnnecessary(new TextDecoder().decode(sourceUInt)));
+
+		moduleTree.addModule(selectedModule.moduleName.split('.'));
+
+		const dependencies = getDependencies(splitedSource);
+
+		for (let depending of dependencies) {
+			if (selectedModules.map (x => x.moduleName).includes(depending)) {
+				moduleTree.addDependencies(selectedModule.moduleName.split('.'), depending);
+			}
+		}
+	}
+	return moduleTree;
+};
 
 const makeGraph = (moduleTree: ModuleTree) => {
 	let subgraphs = '';
@@ -51,60 +137,6 @@ const makeGraph = (moduleTree: ModuleTree) => {
 		loopFunc(mod, '');
 	}
 	return '```mermaid\nflowchart LR\n' + subgraphs + dependencies + '```';
-};
-
-const inDirModules = async (currentUri: vscode.Uri, extension: string) => {
-	const ls = await vscode.workspace.fs.readDirectory(currentUri);
-	const purFiles = ls.filter(module => module[0].match(new RegExp ('\\.'+extension + '$')) && module[1] === 1);
-	const folders = ls.filter(module => module[1] === 2);
-
-	let result: string[] = [];
-
-	for (let module of purFiles) {
-		const sourceUInt = await vscode.workspace.fs.readFile(vscode.Uri.joinPath(currentUri, module[0]));
-		const source = new TextDecoder().decode(sourceUInt).replace(/{-.*?-}/g, '').replace(/--.*?($|(?=(\(|\n|\r|\r\n)))/g, '');
-
-		const moduleName = source.match(/module .*?($|(?=(\(|\n|\r|\r\n)))/g)?.[0].split(/\s+/)[1];
-		if (moduleName === undefined) { continue; }
-		result.push(moduleName);
-	}
-
-	for (let folder of folders) {
-		result = result.concat(await inDirModules(vscode.Uri.joinPath(currentUri, folder[0]), extension));
-	}
-	return result;
-};
-
-const makeModuleTree = async (currentUri: vscode.Uri, moduleTree: ModuleTree, selectingRegExp: RegExp, allModules: string[], extension: string) => {
-	const ls = await vscode.workspace.fs.readDirectory(currentUri);
-	const purFiles = ls.filter(module => module[0].match(new RegExp ('\\.'+extension + '$')) && module[1] === 1);
-	const folders = ls.filter(module => module[1] === 2);
-
-	for (let module of purFiles) {
-		const sourceUInt = await vscode.workspace.fs.readFile(vscode.Uri.joinPath(currentUri, module[0]));
-		const source = new TextDecoder().decode(sourceUInt).replace(/{-.*?-}/g, '').replace(/--.*?($|(?=(\(|\n|\r|\r\n)))/g, '').replace(/qualified/g,'');
-
-		const moduleName = source.match(/module .*?($|(?=(\(|\n|\r|\r\n)))/g)?.[0].split(/\s+/)[1];
-
-		if (moduleName === undefined || !moduleName?.match(selectingRegExp)) { continue; }
-
-		moduleTree.addModule(moduleName.split('.'));
-
-		const res = source.match(/import .*?($|(?=(\(|\n|\r|\r\n)))/g)?.map(x => x.split(/\s+/)[1]);
-
-		if (res !== null) {
-			const nubRes = Array.from(new Set(res));
-			for (let depending of nubRes) {
-				if (depending.match(selectingRegExp) && allModules.includes(depending)) {
-					moduleTree.addDependencies(moduleName.split('.'), depending);
-				}
-			}
-		}
-	}
-
-	for (let folder of folders) {
-		await makeModuleTree(vscode.Uri.joinPath(currentUri, folder[0]), moduleTree, selectingRegExp, allModules, extension);
-	}
 };
 
 export function activate(context: vscode.ExtensionContext) {
@@ -135,8 +167,6 @@ export function activate(context: vscode.ExtensionContext) {
 		const outputFile: vscode.Uri = vscode.Uri.joinPath(rootUri, config.get('outputFile', 'purescript-dependency-graph/output.md'));
 		const extension: string = config.get('extension', 'purs');
 
-		const moduleTree: ModuleTree = new ModuleTree("ModulesRoot");
-
 		vscode.window.withProgress({
 			location: vscode.ProgressLocation.Notification,
 		}, async (progress) => {
@@ -144,14 +174,9 @@ export function activate(context: vscode.ExtensionContext) {
 				message: `Drawing Graph ...`,
 			});
 
-			const allModules = await inDirModules(sourcesDirectory, extension);
-
-			await makeModuleTree(sourcesDirectory, moduleTree, selectingRegExp, allModules, extension);
-
-			console.log(moduleTree);
-
+			const moduleTree = await makeModuleTree(sourcesDirectory, extension, selectingRegExp);
 			vscode.workspace.fs.writeFile(outputFile, new TextEncoder().encode(makeGraph(moduleTree)));
-		})
+		});
 	});
 	context.subscriptions.push(drawGraph);
 }
