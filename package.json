@@ -3,7 +3,7 @@
   "displayName": "PureScript Dependency Graph",
   "publisher": "yukikurage",
   "description": "PureScriptにおけるモジュール間の依存関係を，mermaidを利用してグラフ描画します．",
-  "version": "0.0.3",
+  "version": "0.0.4",
   "engines": {
     "vscode": "^1.58.0"
   },

@@ -33,8 +33,8 @@ const splitWithLine = (source: string) => {
 };
 
 const deleteUnnecessary = (source: string) => {
-	//コメント，ダブルクオーテーション，括弧とその中身を削除
-	return source.replace(/\".*?\"/gs, '').replace(/\{-.*?-\}/gs, '').replace(/--.*?($|(?=(\n|\r|\r\n)))/g, '').replace(/\(.*?\)/gs, '');
+	//コメント，ダブルクオーテーション，括弧とその中身, qualifiedを削除
+	return source.replace(/\".*?\"/gs, '').replace(/\{-.*?-\}/gs, '').replace(/--.*?($|(?=(\n|\r|\r\n)))/g, '').replace(/\(.*?\)/gs, '').replace(/qualified/g,'');
 };
 
 const splitWithAnySpace = (source: string) => {
