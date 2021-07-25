@@ -34,16 +34,21 @@ const splitWithLine = (source: string) => {
 
 const deleteUnnecessary = (source: string) => {
 	//コメント，ダブルクオーテーション，括弧とその中身, qualifiedを削除
-	return source.replace(/\".*?\"/gs, '').replace(/\{-.*?-\}/gs, '').replace(/--.*?($|(?=(\n|\r|\r\n)))/g, '').replace(/\(.*?\)/gs, '').replace(/qualified/g,'');
+	return source.replace(/\".*?\"/gs, '')
+		.replace(/\{-.*?-\}/gs, '')
+		.replace(/--.*?($|(?=(\n|\r|\r\n)))/g, '')
+		.replace(/\(.*?\)/gs, '')
+		.replace(/ qualified /g,' ')
+		.replace(/^\s*?port /g,'');
 };
 
 const splitWithAnySpace = (source: string) => {
-	return source.split(/\s+/);
+	return source.split(/\s+/).filter(x => x !== '');
 };
 
 // deleteUnnecessaryとsplitWithLineを行ってから投入
 const getModuleName = (splitedSource: string[]) => {
-	const definedLine = splitedSource.find(line => line.match(/^module .*?/g));
+	const definedLine = splitedSource.find(line => line.match(/^\s*?module .*?/g));
 	if (definedLine === undefined) {
 		return undefined;
 	}
@@ -51,7 +56,7 @@ const getModuleName = (splitedSource: string[]) => {
 };
 
 const getDependencies = (splitedSource: string[]) => {
-	const definedLines = splitedSource.filter(line => line.match(/^import .*?/g));
+	const definedLines = splitedSource.filter(line => line.match(/^\s*?import .*?/g));
 	return definedLines.map(line => splitWithAnySpace(line)[1]);
 };
 
